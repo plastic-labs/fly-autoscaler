@@ -127,7 +127,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 	}
 
 	machines := filteredMachines(all, func(m *fly.Machine) bool {
-		return m.ProcessGroup() == r.ProcessGroup && m.HostStatus == fly.HostStatusOk && slices.Contains(r.Regions, m.Region)
+		return m.ProcessGroup() == r.ProcessGroup && m.HostStatus == fly.HostStatusOk && (len(r.Regions) == 0 || slices.Contains(r.Regions, m.Region))
 	})
 	m := machinesByState(machines)
 
