@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"slices"
 	"sort"
 	"sync/atomic"
 
@@ -120,13 +121,15 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 	}
 
 	// Fetch list of running machines.
-	machines, err := r.listMachines(ctx)
+	all, err := r.listMachines(ctx)
 	if err != nil {
 		return fmt.Errorf("list machines: %w", err)
 	}
 
-	filtered := machinesInGroup(machines, r.ProcessGroup)
-	m := machinesByState(filtered)
+	machines := filteredMachines(all, func(m *fly.Machine) bool {
+		return m.ProcessGroup() == r.ProcessGroup && m.HostStatus == fly.HostStatusOk && slices.Contains(r.Regions, m.Region)
+	})
+	m := machinesByState(machines)
 
 	// Log out stats so we know exactly what the state of the world is.
 	slog.Info("reconciling",
@@ -457,21 +460,20 @@ func (r *Reconciler) evalInt(s string) (int, bool, error) {
 	return int(f), true, nil
 }
 
+func filteredMachines(machines []*fly.Machine, predicate func(*fly.Machine) bool) []*fly.Machine {
+	var filtered []*fly.Machine
+	for _, m := range machines {
+		if predicate(m) {
+			filtered = append(filtered, m)
+		}
+	}
+	return filtered
+}
+
 func machinesByState(a []*fly.Machine) map[string][]*fly.Machine {
 	m := make(map[string][]*fly.Machine)
 	for _, mach := range a {
 		m[mach.State] = append(m[mach.State], mach)
-	}
-	return m
-}
-
-func machinesInGroup(machines []*fly.Machine, group string) []*fly.Machine {
-	var m []*fly.Machine
-	for _, mach := range machines {
-		g := mach.ProcessGroup()
-		if g == group {
-			m = append(m, mach)
-		}
 	}
 	return m
 }
