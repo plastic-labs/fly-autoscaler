@@ -45,6 +45,8 @@ func (c *MetricCollector) Name() string {
 func (c *MetricCollector) CollectMetric(ctx context.Context, app string) (float64, error) {
 	query := fas.ExpandMetricQuery(ctx, c.query, app)
 
+	// slog.Info("performing prometheus query", slog.String("app", app), slog.String("query", query))
+
 	result, warnings, err := c.api.Query(context.Background(), query, time.Now())
 	if err != nil {
 		return 0, err

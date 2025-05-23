@@ -368,6 +368,7 @@ func (r *Reconciler) destroyMachine(ctx context.Context, id string) error {
 }
 
 func (r *Reconciler) startMachine(ctx context.Context, id string) error {
+	// slog.Info("calling fly api to start machine", slog.String("app", r.AppName), slog.String("machine_id", id))
 	if _, err := r.Client.Start(ctx, id, ""); err != nil {
 		r.Stats.MachineStartFailed.Add(1)
 		return err
@@ -377,6 +378,7 @@ func (r *Reconciler) startMachine(ctx context.Context, id string) error {
 }
 
 func (r *Reconciler) stopMachine(ctx context.Context, id string) error {
+	// slog.Info("calling fly api to stop machine", slog.String("app", r.AppName), slog.String("machine_id", id))
 	if err := r.Client.Stop(ctx, fly.StopMachineInput{ID: id}, ""); err != nil {
 		r.Stats.MachineStopFailed.Add(1)
 		return err

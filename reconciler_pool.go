@@ -191,12 +191,15 @@ func (p *ReconcilerPool) monitorAppNameRefresh(ctx context.Context) {
 
 	var initialized bool
 	for {
+		// slog.Info("monitorAppNameRefresh: calling updateAppNameList")
 		if err := p.updateAppNameList(ctx); err != nil {
 			slog.Error("app list update failed", slog.Any("err", err))
 		}
+		// slog.Info("monitorAppNameRefresh: updateAppNameList call completed")
 
 		// Start the work generator once we have our initial list.
 		if !initialized {
+			// slog.Info("monitorAppNameRefresh: first run complete, starting monitorWorkQueueGenerator")
 			initialized = true
 			p.wg.Add(1)
 			go func() { defer p.wg.Done(); p.monitorWorkQueueGenerator(p.ctx) }()
@@ -213,6 +216,7 @@ func (p *ReconcilerPool) monitorAppNameRefresh(ctx context.Context) {
 
 func (p *ReconcilerPool) updateAppNameList(ctx context.Context) error {
 	// Compile the wildcard expression as a regex so we can use it to match.
+	// slog.Info("updateAppNameList: beginning update", slog.String("appNamePattern", p.AppName), slog.String("orgSlug", p.OrganizationSlug))
 	re, err := regexp.Compile(FormatWildcardAsRegexp(p.AppName))
 	if err != nil {
 		return fmt.Errorf("compile wildcard as regexp: %w", err)
@@ -220,17 +224,23 @@ func (p *ReconcilerPool) updateAppNameList(ctx context.Context) error {
 
 	// Fetch and cache the organization ID.
 	if p.orgID == "" {
+		// slog.Info("updateAppNameList: fetching organization ID", slog.String("orgSlug", p.OrganizationSlug))
 		org, err := p.flyClient.GetOrganizationBySlug(ctx, p.OrganizationSlug)
 		if err != nil {
+			slog.Error("updateAppNameList: failed to get organization by slug", slog.Any("err", err))
 			return fmt.Errorf("get organization by slug: %w", err)
 		}
 		p.orgID = org.ID
+		// slog.Info("updateAppNameList: organization ID fetched", slog.String("orgID", p.orgID))
 	}
 
+	// slog.Info("updateAppNameList: fetching apps for organization", slog.String("orgID", p.orgID))
 	apps, err := p.flyClient.GetAppsForOrganization(ctx, p.orgID)
 	if err != nil {
+		slog.Error("updateAppNameList: failed to get apps for organization", slog.Any("err", err))
 		return fmt.Errorf("get apps for organization: %w", err)
 	}
+	// slog.Info("updateAppNameList: fetched apps for organization", slog.Int("count", len(apps)))
 
 	p.apps.Lock()
 	defer p.apps.Unlock()
@@ -238,6 +248,8 @@ func (p *ReconcilerPool) updateAppNameList(ctx context.Context) error {
 	m := make(map[string]appInfo)
 	for i := range apps {
 		name := apps[i].Name
+
+		// slog.Info("updateAppNameList: checking app", slog.String("app", name))
 
 		// Match against wildcard expression.
 		if !re.MatchString(name) {
@@ -251,8 +263,10 @@ func (p *ReconcilerPool) updateAppNameList(ctx context.Context) error {
 		}
 
 		// Otherwise build a new client with our constructor.
+		// slog.Info("updateAppNameList: creating new flaps client for matched app", slog.String("app", name))
 		client, err := p.NewFlapsClient(ctx, name)
 		if err != nil {
+			slog.Error("updateAppNameList: failed to build flaps client", slog.String("app", name), slog.Any("err", err))
 			return fmt.Errorf("cannot build flaps client for app %q: %w", name, err)
 		}
 		m[name] = appInfo{
@@ -263,6 +277,7 @@ func (p *ReconcilerPool) updateAppNameList(ctx context.Context) error {
 
 	// Replace entire map so we
 	p.apps.m = m
+	// slog.Info("updateAppNameList: completed update", slog.Int("matched_app_count", len(m)))
 
 	return nil
 }
@@ -276,41 +291,83 @@ func (p *ReconcilerPool) monitorReconciler(ctx context.Context, r *Reconciler) {
 		case <-ctx.Done():
 			return
 		case info := <-p.ch:
-			ctx, cancel := context.WithTimeoutCause(p.ctx, p.ReconcileTimeout, errReconciliationTimeout)
-			defer cancel()
+			// Defend against panics within an individual app's reconciliation cycle.
+			func() { // Anonymous function for one app processing cycle
+				// General panic recovery for the entire app processing cycle (e.g., from CollectMetrics, Reconcile)
+				defer func() {
+					if rec := recover(); rec != nil {
+						slog.ErrorContext(ctx, "monitorReconciler: recovered from UNHANDLED panic during app processing",
+							slog.String("app", info.name),
+							slog.Any("panic_info", rec),
+						)
+					}
+				}()
 
-			r.AppName = info.name
-			r.Client = info.client
+				// slog.Info("monitorReconciler: received app from channel", slog.String("app", info.name))
+				appCtx, cancel := context.WithTimeoutCause(p.ctx, p.ReconcileTimeout, errReconciliationTimeout)
+				defer cancel()
 
-			release, err := p.flyClient.GetAppCurrentReleaseMachines(ctx, info.name)
-			if err != nil {
-				slog.Error("get current release failed",
-					slog.String("app", info.name),
-					slog.Any("err", err))
-				continue
-			}
+				r.AppName = info.name
+				r.Client = info.client
 
-			if release.Status == "running" {
-				slog.Warn("release in progress, skipping reconciliation",
-					slog.String("app", r.AppName),
-				)
-				continue
-			}
+				// --- Logic for GetAppCurrentReleaseMachines with specific panic handling ---
+				proceedToMetricsAndReconciliation := true // Assume we proceed, unless a condition below sets this to false.
 
-			if err := r.CollectMetrics(ctx); err != nil {
-				slog.Error("metrics collection failed",
-					slog.String("app", info.name),
-					slog.Any("err", err))
-				continue
-			}
+				func() { // Inner anonymous function to isolate GetAppCurrentReleaseMachines call and its panic recovery
+					defer func() {
+						if rec := recover(); rec != nil {
+							slog.ErrorContext(appCtx, "monitorReconciler: ignoring panic during GetAppCurrentReleaseMachines call (this is a fly library error). Proceeding with metrics/reconciliation for app.",
+								slog.String("app", info.name),
+								slog.Any("panic_info", rec),
+							)
+							// proceedToMetricsAndReconciliation remains true by default if a panic occurs here.
+						}
+					}()
 
-			if err := r.Reconcile(ctx); err != nil {
-				slog.Error("reconciliation failed",
-					slog.String("app", info.name),
-					slog.Any("err", err))
-				continue
-			}
+					// slog.Info("monitorReconciler: calling GetAppCurrentReleaseMachines", slog.String("app", info.name))
+					release, err := p.flyClient.GetAppCurrentReleaseMachines(appCtx, info.name)
 
+					if err != nil { // Non-panic error from GetAppCurrentReleaseMachines
+						slog.ErrorContext(appCtx, "GetAppCurrentReleaseMachines returned error. Skipping reconciliation for this app.",
+							slog.String("app", info.name), slog.Any("err", err))
+						proceedToMetricsAndReconciliation = false
+						return
+					}
+
+					// Success path for GetAppCurrentReleaseMachines
+					// slog.Info("monitorReconciler: GetAppCurrentReleaseMachines success", slog.String("app", info.name), slog.String("release_status", release.Status), slog.Bool("release_inprogress", release.InProgress))
+					if release.Status == "running" {
+						slog.WarnContext(appCtx, "Release is in progress (release.Status == \"running\"). Skipping reconciliation for this app.",
+							slog.String("app", r.AppName))
+						proceedToMetricsAndReconciliation = false
+						return
+					}
+				}() // End of inner anonymous function for GetAppCurrentReleaseMachines
+				// --- End of logic for GetAppCurrentReleaseMachines ---
+
+				if !proceedToMetricsAndReconciliation {
+					// slog.Info("monitorReconciler: Bypassing metrics and reconciliation for app due to release check outcome.", slog.String("app", info.name))
+					return // Exit the main anonymous function for this app.
+				}
+
+				// slog.Info("monitorReconciler: proceeding to CollectMetrics", slog.String("app", info.name))
+				if err := r.CollectMetrics(appCtx); err != nil {
+					slog.ErrorContext(appCtx, "metrics collection failed",
+						slog.String("app", info.name),
+						slog.Any("err", err))
+					return 
+				}
+				// slog.Info("monitorReconciler: CollectMetrics success", slog.String("app", info.name))
+
+				// slog.Info("monitorReconciler: calling Reconcile", slog.String("app", info.name))
+				if err := r.Reconcile(appCtx); err != nil {
+					slog.ErrorContext(appCtx, "reconciliation failed",
+						slog.String("app", info.name),
+						slog.Any("err", err))
+					return 
+				}
+				// slog.Info("monitorReconciler: Reconcile success", slog.String("app", info.name))
+			}() // End of the main anonymous function for app processing.
 		}
 	}
 }
