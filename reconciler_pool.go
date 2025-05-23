@@ -316,10 +316,10 @@ func (p *ReconcilerPool) monitorReconciler(ctx context.Context, r *Reconciler) {
 				func() { // Inner anonymous function to isolate GetAppCurrentReleaseMachines call and its panic recovery
 					defer func() {
 						if rec := recover(); rec != nil {
-							slog.ErrorContext(appCtx, "monitorReconciler: ignoring panic during GetAppCurrentReleaseMachines call (this is a fly library error). Proceeding with metrics/reconciliation for app.",
-								slog.String("app", info.name),
-								slog.Any("panic_info", rec),
-							)
+							// slog.ErrorContext(appCtx, "monitorReconciler: ignoring panic during GetAppCurrentReleaseMachines call (this is a fly library error). Proceeding with metrics/reconciliation for app.",
+							// 	slog.String("app", info.name),
+							// 	slog.Any("panic_info", rec),
+							// )
 							// proceedToMetricsAndReconciliation remains true by default if a panic occurs here.
 						}
 					}()
