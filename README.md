@@ -92,11 +92,7 @@ path = "/metrics"
 
 ### Create a deploy token
 
-Next, set up a new deploy token for the application you want to scale:
-
-```sh
-$ fly tokens create deploy -a TARGET_APP_NAME
-```
+Next, set up a new **organization level** deploy token for the organization in the fly GUI.
 
 Set the token as a secret on your application:
 
