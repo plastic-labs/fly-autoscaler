@@ -1,15 +1,24 @@
-app = "honcho-autoscaler"
+# PROD:
+app = "honcho-prod-autoscaler"
+# TESTING:
+# app = "honcho-autoscaler"
 
 [build]
 
 [env]
-FAS_PROMETHEUS_ADDRESS = "https://api.fly.io/prometheus/groudon-testing"
-# for local testing:
-# FAS_PROMETHEUS_ADDRESS = "http://localhost:9090" 
+# PROD:
+FAS_PROMETHEUS_ADDRESS = "https://api.fly.io/prometheus/honcho-production-saas"
+# TESTING:
+# FAS_PROMETHEUS_ADDRESS = "https://api.fly.io/prometheus/groudon-testing"
+
 FAS_PROMETHEUS_METRIC_NAME = "honcho_deriver_unprocessed_sessions"
 FAS_PROMETHEUS_QUERY = "sum(honcho_deriver_unprocessed_sessions{honcho_app_name='$APP_NAME'})"
 
-FAS_ORG = "groudon-testing" 
+# PROD:
+FAS_ORG = "honcho-production-saas" 
+# TESTING:
+# FAS_ORG = "groudon-testing" 
+
 FAS_APP_NAME = "hch*"
 FAS_PROCESS_GROUP = "deriver"
 # currently starts a new deriver for every unprocessed session
