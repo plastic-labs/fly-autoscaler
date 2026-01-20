@@ -14,16 +14,22 @@ FAS_PROMETHEUS_ADDRESS = "https://api.fly.io/prometheus/honcho-production-saas"
 FAS_PROMETHEUS_METRIC_NAME = "honcho_deriver_unprocessed_sessions"
 FAS_PROMETHEUS_QUERY = "sum(honcho_deriver_unprocessed_sessions{honcho_app_name='$APP_NAME'})"
 
+# Second Prometheus metric: billing pause status from groudon gateway
+# Uses same Prometheus address as above (falls back automatically)
+FAS_PROMETHEUS2_METRIC_NAME = "billing_paused"
+FAS_PROMETHEUS2_QUERY = "billing_paused{honcho_app_name='$APP_NAME'}"
+
 # PROD:
-FAS_ORG = "honcho-production-saas" 
+FAS_ORG = "honcho-production-saas"
 # TESTING:
-# FAS_ORG = "groudon-testing" 
+# FAS_ORG = "groudon-testing"
 
 FAS_APP_NAME = "hch*"
 FAS_PROCESS_GROUP = "deriver"
-# currently starts a new deriver for every unprocessed session
-# we can workshop this if it's overzealous
-FAS_STARTED_MACHINE_COUNT = "min(10, honcho_deriver_unprocessed_sessions + 1)"
+# Scale based on unprocessed sessions, but only if billing is not paused.
+# billing_paused is exposed by groudon gateway and scraped by Fly's Prometheus.
+# If billing_paused metric doesn't exist for an app, treat it as not paused (0).
+FAS_STARTED_MACHINE_COUNT = "(billing_paused ?? 0) == 1 ? 0 : min(10, honcho_deriver_unprocessed_sessions + 1)"
 
 [metrics]
 port = 9090
