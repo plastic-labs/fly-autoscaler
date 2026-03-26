@@ -17,7 +17,7 @@ FAS_PROMETHEUS_QUERY = "sum(honcho_deriver_unprocessed_sessions{honcho_app_name=
 # Second Prometheus metric: billing pause status from groudon gateway
 # Uses same Prometheus address as above (falls back automatically)
 FAS_PROMETHEUS2_METRIC_NAME = "billing_paused"
-FAS_PROMETHEUS2_QUERY = "billing_paused{honcho_app_name='$APP_NAME'}"
+FAS_PROMETHEUS2_QUERY = "max(billing_paused{honcho_app_name='$APP_NAME'}) or on() vector(0)"
 
 # PROD:
 FAS_ORG = "honcho-production-saas"
