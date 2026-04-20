@@ -30,10 +30,11 @@ FAS_ORG = "honcho-production-saas"
 
 FAS_APP_NAME = "hch*"
 FAS_PROCESS_GROUP = "deriver"
+# Set the target number of started deriver machines per app based on queue load.
 # Scale based on active queue session saturation, but only if billing is not paused.
 # If all deriver worker slots are full, add a machine for headroom.
-# floor(active / workers) + 1: e.g. 5 active / 5 workers = 2 machines (1 busy + 1 headroom)
-FAS_STARTED_MACHINE_COUNT = "(billing_paused ?? 0) == 1 ? 0 : min(10, int(honcho_active_queue_sessions / (honcho_deriver_workers ?? 1)) + 1)"
+# Guard against missing or zero worker counts by clamping the divisor to at least 1.
+FAS_STARTED_MACHINE_COUNT = "(billing_paused ?? 0) == 1 ? 0 : min(10, int(honcho_active_queue_sessions / max(honcho_deriver_workers ?? 1, 1)) + 1)"
 
 [metrics]
 port = 9090
