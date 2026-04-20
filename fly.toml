@@ -12,7 +12,7 @@ FAS_PROMETHEUS_ADDRESS = "https://api.fly.io/prometheus/honcho-production-saas"
 # FAS_PROMETHEUS_ADDRESS = "https://api.fly.io/prometheus/groudon-testing"
 
 FAS_PROMETHEUS_METRIC_NAME = "honcho_active_queue_sessions"
-FAS_PROMETHEUS_QUERY = "sum(honcho_active_queue_sessions{honcho_app_name='$APP_NAME'})"
+FAS_PROMETHEUS_QUERY = "sum(honcho_active_queue_sessions{honcho_app_name='$APP_NAME'}) or on() vector(0)"
 
 # Second Prometheus metric: billing pause status from groudon gateway
 # Uses same Prometheus address as above (falls back automatically)
