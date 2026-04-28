@@ -203,16 +203,18 @@ func NewConfigFromEnv() (_ *Config, err error) {
 		})
 	}
 
-	// Support a second Prometheus collector via FAS_PROMETHEUS2_* env vars
+	// Support additional Prometheus collectors via FAS_PROMETHEUS{N}_* env vars
 	// Uses the same address and token as the first Prometheus collector
-	if metricName := os.Getenv("FAS_PROMETHEUS2_METRIC_NAME"); metricName != "" {
-		c.MetricCollectors = append(c.MetricCollectors, &MetricCollectorConfig{
-			Type:       "prometheus",
-			Address:    os.Getenv("FAS_PROMETHEUS_ADDRESS"),
-			MetricName: metricName,
-			Query:      os.Getenv("FAS_PROMETHEUS2_QUERY"),
-			Token:      os.Getenv("FAS_PROMETHEUS_TOKEN"),
-		})
+	for _, suffix := range []string{"2", "3"} {
+		if metricName := os.Getenv("FAS_PROMETHEUS" + suffix + "_METRIC_NAME"); metricName != "" {
+			c.MetricCollectors = append(c.MetricCollectors, &MetricCollectorConfig{
+				Type:       "prometheus",
+				Address:    os.Getenv("FAS_PROMETHEUS_ADDRESS"),
+				MetricName: metricName,
+				Query:      os.Getenv("FAS_PROMETHEUS" + suffix + "_QUERY"),
+				Token:      os.Getenv("FAS_PROMETHEUS_TOKEN"),
+			})
+		}
 	}
 
 	if addr := os.Getenv("FAS_TEMPORAL_ADDRESS"); addr != "" {

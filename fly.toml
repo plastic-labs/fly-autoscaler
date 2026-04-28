@@ -11,13 +11,17 @@ FAS_PROMETHEUS_ADDRESS = "https://api.fly.io/prometheus/honcho-production-saas"
 # TESTING:
 # FAS_PROMETHEUS_ADDRESS = "https://api.fly.io/prometheus/groudon-testing"
 
-FAS_PROMETHEUS_METRIC_NAME = "honcho_deriver_unprocessed_sessions"
-FAS_PROMETHEUS_QUERY = "sum(honcho_deriver_unprocessed_sessions{honcho_app_name='$APP_NAME'})"
+FAS_PROMETHEUS_METRIC_NAME = "honcho_active_queue_sessions"
+FAS_PROMETHEUS_QUERY = "sum(honcho_active_queue_sessions{honcho_app_name='$APP_NAME'}) or on() vector(0)"
 
 # Second Prometheus metric: billing pause status from groudon gateway
 # Uses same Prometheus address as above (falls back automatically)
 FAS_PROMETHEUS2_METRIC_NAME = "billing_paused"
-FAS_PROMETHEUS2_QUERY = "billing_paused{honcho_app_name='$APP_NAME'}"
+FAS_PROMETHEUS2_QUERY = "max(billing_paused{honcho_app_name='$APP_NAME'}) or on() vector(0)"
+
+# Third Prometheus metric: deriver workers configured per instance
+FAS_PROMETHEUS3_METRIC_NAME = "honcho_deriver_workers"
+FAS_PROMETHEUS3_QUERY = "max(honcho_deriver_workers{honcho_app_name='$APP_NAME'}) or on() vector(1)"
 
 # PROD:
 FAS_ORG = "honcho-production-saas"
@@ -26,10 +30,11 @@ FAS_ORG = "honcho-production-saas"
 
 FAS_APP_NAME = "hch*"
 FAS_PROCESS_GROUP = "deriver"
-# Scale based on unprocessed sessions, but only if billing is not paused.
-# billing_paused is exposed by groudon gateway and scraped by Fly's Prometheus.
-# If billing_paused metric doesn't exist for an app, treat it as not paused (0).
-FAS_STARTED_MACHINE_COUNT = "(billing_paused ?? 0) == 1 ? 0 : min(10, honcho_deriver_unprocessed_sessions + 1)"
+# Set the target number of started deriver machines per app based on queue load.
+# Scale based on active queue session saturation, but only if billing is not paused.
+# If all deriver worker slots are full, add a machine for headroom.
+# Guard against missing or zero worker counts by clamping the divisor to at least 1.
+FAS_STARTED_MACHINE_COUNT = "(billing_paused ?? 0) == 1 ? 0 : min(10, int(honcho_active_queue_sessions / max(honcho_deriver_workers ?? 1, 1)) + 1)"
 
 [metrics]
 port = 9090
